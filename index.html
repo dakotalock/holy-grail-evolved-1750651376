@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexiGlyph Weaver</title>
+    <!-- Preload and preconnect for Google Fonts for better performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN for quick setup and responsive utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles beyond Tailwind defaults to ensure visual coherence and specific layout */
+        body {
+            font-family: 'Inter', sans-serif; /* A modern, clean font choice */
+            background-color: #0f172a; /* Slate-900 for a dark, professional background */
+            color: #e2e8f0; /* Slate-200 for readable text */
+            scroll-behavior: smooth; /* Smooth scrolling for better UX */
+        }
+        .container {
+            max-width: 1200px; /* Max width for content to prevent overly wide lines */
+            margin: 0 auto; /* Center the container */
+            padding: 1rem; /* Padding around the content */
+        }
+        /* Styling for text input and buttons, leveraging Tailwind for consistency */
+        textarea, input[type="text"], input[type="range"] { /* Added input[type="range"] */
+            @apply bg-slate-800 text-slate-100 border border-slate-600 rounded-md p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+        }
+        button {
+            @apply px-5 py-2 rounded-md font-semibold transition-colors duration-200;
+        }
+        button.primary {
+            @apply bg-blue-600 hover:bg-blue-700 text-white; /* Primary action button style */
+        }
+        button.secondary {
+            @apply bg-slate-700 hover:bg-slate-600 text-slate-200; /* Secondary action button style */
+        }
+        button:disabled {
+            @apply opacity-50 cursor-not-allowed; /* Visual feedback for disabled buttons */
+        }
+        /* Loading spinner animation */
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #3b82f6; /* Blue-500 */
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Glyph display container for fixed aspect ratio and centering */
+        .glyph-container {
+            @apply bg-slate-900 border border-slate-700 rounded-lg shadow-lg flex items-center justify-center overflow-hidden;
+            aspect-ratio: 1 / 1; /* Ensures the glyph is always square */
+            position: relative; /* For absolute positioning of loading indicator */
+            transition: background-color 0.5s ease-out; /* Animation for background color change */
+        }
+        .glyph-container svg {
+            display: block; /* Removes any default inline-block spacing */
+            max-width: 100%;
+            max-height: 100%;
+            width: 100%; /* Ensures SVG fills its container */
+            height: 100%; /* Ensures SVG fills its container */
+            /* Animation for glyph appearance */
+            opacity: 0;
+            transform: scale(0.9);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        }
+        .glyph-container svg.is-loaded {
+            opacity: 1;
+            transform: scale(1);
+        }
+        
+        /* Animation for button click feedback */
+        button:active {
+            transform: scale(0.98);
+            transition: transform 0.1s ease-out;
+        }
+
+        /* Styles for the details/summary element for settings panel */
+        details {
+            @apply bg-slate-700 p-4 rounded-md shadow-inner transition-all duration-300 ease-in-out;
+        }
+        details summary {
+            @apply cursor-pointer font-semibold text-slate-200 text-lg py-2 -mx-4 px-4 -my-2; /* Adjust padding to align with details border */
+            list-style: none; /* Remove default marker */
+            position: relative;
+            outline: none;
+        }
+        details summary::-webkit-details-marker {
+            display: none; /* Hide default marker for Webkit browsers */
+        }
+        details summary::after {
+            content: '+'; /* Custom marker */
+            @apply absolute right-4 top-1/2 -translate-y-1/2 text-2xl;
+            transition: transform 0.2s ease-in-out; /* Removed content transition as it's not animatable */
+        }
+        details[open] summary::after {
+            content: '-'; /* Change marker when open */
+            transform: translateY(-50%) rotate(0deg); /* No rotation needed for minus */
+        }
+        details[open] {
+            @apply mt-4; /* Add some margin when open */
+        }
+        
+        /* Custom styles for range input track and thumb */
+        input[type="range"] {
+            @apply w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-600;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            @apply w-5 h-5 bg-blue-500 rounded-full cursor-pointer;
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -6px; /* Adjust to vertically center thumb on track */
+        }
+        input[type="range"]::-moz-range-thumb {
+            @apply w-5 h-5 bg-blue-500 rounded-full cursor-pointer;
+            appearance: none;
+            margin-top: -6px; /* Adjust to vertically center thumb on track */
+        }
+
+        /* New: History list item styles */
+        .history-item {
+            @apply flex justify-between items-center bg-slate-700 hover:bg-slate-600 p-3 rounded-md cursor-pointer transition-colors duration-200;
+        }
+        .history-item span {
+            @apply text-slate-300 truncate;
+        }
+        .history-item button {
+            @apply bg-red-600 hover:bg-red-700 text-white px-3 py-1 text-sm rounded-md ml-4 flex-shrink-0;
+        }
+
+        /* New: Toast Notification Styles */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column-reverse; /* Newest toast on top */
+            gap: 10px;
+            pointer-events: none; /* Allow clicks through to elements underneath */
+        }
+        .toast {
+            @apply bg-slate-700 text-slate-100 px-4 py-2 rounded-lg shadow-lg;
+            min-width: 200px;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+            pointer-events: auto; /* Re-enable pointer events for the toast itself */
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast.hide {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        /* New: Glyph Display Placeholder */
+        .glyph-placeholder {
+            @apply flex flex-col items-center justify-center text-center text-slate-400;
+            height: 100%;
+            width: 100%;
+            padding: 2rem;
+            font-size: 1.125rem; /* text-lg */
+            line-height: 1.75rem; /* leading-7 */
+        }
+        .glyph-placeholder svg {
+            @apply w-24 h-24 mb-4 text-slate-500;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <!-- Header Section -->
+    <header class="bg-slate-900 py-4 border-b border-slate-700">
+        <div class="container flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-blue-400" aria-label="LexiGlyph Weaver Application Title">LexiGlyph Weaver</h1>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow container py-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- Input Section -->
+        <section class="md:col-span-1 bg-slate-800 p-6 rounded-lg shadow-xl flex flex-col space-y-4 h-fit" aria-labelledby="input-heading">
+            <h2 id="input-heading" class="text-2xl font-semibold text-slate-100 mb-2">Weave Your Glyph</h2>
+            <div>
+                <label for="textInput" class="block text-slate-300 text-sm font-medium mb-1">Enter your text (5-256 characters):</label>
+                <textarea id="textInput" rows="4" class="w-full" placeholder="e.g., 'Hello World', 'Deterministic Design', 'LexiGlyph Weaver'"
+                          aria-describedby="charCount validationMessage" aria-required="true" title="Enter text to generate a unique glyph."></textarea>
+                <div class="flex justify-between text-xs mt-1">
+                    <span id="charCount" class="text-slate-400">0 / 256 characters</span>
+                    <span id="validationMessage" class="text-red-400 font-medium" role="alert" aria-live="polite"></span>
+                </div>
+            </div>
+            <button id="generateButton" class="primary w-full" disabled aria-label="Weave Glyph from text input" title="Generate a unique glyph based on your text.">
+                Weave Glyph
+            </button>
+            <!-- New Mechanics: Random Glyph Generation -->
+            <button id="randomGlyphButton" class="secondary w-full" aria-label="Generate a random glyph" title="Generate a glyph from a random text string.">
+                Generate Random Glyph
+            </button>
+
+            <!-- Moderate Improvement: Advanced Settings Panel -->
+            <details id="settingsPanel" class="space-y-4">
+                <summary>Advanced Settings</summary>
+                <div class="flex flex-col space-y-4 pt-2">
+                    <div>
+                        <label for="recursionDepthMultiplier" class="block text-slate-300 text-sm font-medium mb-1">Recursion Depth Multiplier:</label>
+                        <input type="range" id="recursionDepthMultiplier" min="0.5" max="1.5" step="0.01" value="1.0"
+                               title="Adjusts the complexity and intricacy of the glyph.">
+                        <span id="recursionDepthValue" class="block text-slate-400 text-xs mt-1 text-right">1.0x</span>
+                    </div>
+                    <div>
+                        <label for="strokeWidthMultiplier" class="block text-slate-300 text-sm font-medium mb-1">Stroke Width Multiplier:</label>
+                        <input type="range" id="strokeWidthMultiplier" min="0.5" max="2.0" step="0.01" value="1.0"
+                               title="Adjusts the thickness of the lines in the glyph.">
+                        <span id="strokeWidthValue" class="block text-slate-400 text-xs mt-1 text-right">1.0x</span>
+                    </div>
+                    <div>
+                        <label for="innerRotationOffsetMultiplier" class="block text-slate-300 text-sm font-medium mb-1">Inner Rotation Intensity:</label>
+                        <input type="range" id="innerRotationOffsetMultiplier" min="0.0" max="2.0" step="0.01" value="1.0"
+                               title="Adjusts the rotational offset of nested glyph elements.">
+                        <span id="innerRotationValue" class="block text-slate-400 text-xs mt-1 text-right">1.0x</span>
+                    </div>
+                    <div>
+                        <label for="saturationOffset" class="block text-slate-300 text-sm font-medium mb-1">Color Saturation Offset:</label>
+                        <input type="range" id="saturationOffset" min="-20" max="20" step="1" value="0"
+                               title="Adjusts the vibrancy of the glyph's colors.">
+                        <span id="saturationValue" class="block text-slate-400 text-xs mt-1 text-right">0</span>
+                    </div>
+                    <div>
+                        <label for="lightnessOffset" class="block text-slate-300 text-sm font-medium mb-1">Color Lightness Offset:</label>
+                        <input type="range" id="lightnessOffset" min="-20" max="20" step="1" value="0"
+                               title="Adjusts the brightness of the glyph's colors.">
+                        <span id="lightnessValue" class="block text-slate-400 text-xs mt-1 text-right">0</span>
+                    </div>
+                    <!-- UI/UX Enhancement: Reset Settings Button -->
+                    <button id="resetSettingsButton" class="secondary w-full mt-4" aria-label="Reset all advanced settings to default values" title="Reset all advanced settings to their default values.">
+                        Reset Settings
+                    </button>
+                </div>
+            </details>
+
+            <!-- New Mechanics: Glyph History -->
+            <section class="space-y-3 mt-4" aria-labelledby="history-heading">
+                <h3 id="history-heading" class="text-xl font-semibold text-slate-100">Glyph History</h3>
+                <div id="glyphHistoryList" class="flex flex-col space-y-2 max-h-60 overflow-y-auto pr-2">
+                    <p id="noHistoryMessage" class="text-slate-400 text-sm italic hidden">No history yet. Generate a glyph!</p>
+                    <!-- History items will be injected here -->
+                </div>
+                <button id="clearHistoryButton" class="secondary w-full text-sm mt-2" aria-label="Clear all saved glyph history" title="Clear all saved glyph history.">Clear History</button>
+            </section>
+        </section>
+
+        <!-- Glyph Display Section -->
+        <section class="md:col-span-2 flex flex-col items-center justify-center bg-slate-800 p-6 rounded-lg shadow-xl relative" aria-labelledby="glyph-heading">
+            <h2 id="glyph-heading" class="text-2xl font-semibold text-slate-100 mb-4">Your Unique Glyph</h2>
+            <div id="glyphDisplay" class="glyph-container w-full max-w-xl" role="img" aria-live="polite" aria-label="Generated LexiGlyph">
+                <!-- SVG Glyph will be injected here by JavaScript -->
+                <div class="glyph-placeholder" id="glyphPlaceholder">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.823 1.704l-4.352 4.352A2.25 2.25 0 007.257 21h9.505c.505 0 .993-.195 1.359-.561l-4.352-4.352a2.25 2.25 0 01-.823-1.704V3.104M6 17.25h12"/>
+                    </svg>
+                    <p>Enter text on the left to weave your unique LexiGlyph, or generate a random one!</p>
+                    <p class="text-sm mt-2 text-slate-500">Adjust settings for different styles.</p>
+                </div>
+                <div id="loadingIndicator" class="loading-spinner absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 hidden" role="status" aria-label="Generating glyph..."></div>
+            </div>
+            <div class="flex flex-wrap justify-center gap-4 mt-6">
+                <button id="downloadSvg" class="secondary" disabled aria-label="Download glyph as SVG file" title="Download the glyph as an SVG file.">Download SVG</button>
+                <button id="downloadPng" class="secondary" disabled aria-label="Download glyph as PNG image" title="Download the glyph as a high-resolution PNG image.">Download PNG</button>
+                <!-- New Mechanics: Copy to Clipboard -->
+                <button id="copySvg" class="secondary" disabled aria-label="Copy SVG code to clipboard" title="Copy the raw SVG code to your clipboard.">Copy SVG</button>
+                <button id="copyPng" class="secondary" disabled aria-label="Copy PNG image to clipboard" title="Copy the PNG image (Base64 data URL) to your clipboard.">Copy PNG</button>
+                <!-- Moderate Improvement: Shareable URL -->
+                <button id="copyShareLink" class="secondary" disabled aria-label="Copy shareable link to clipboard" title="Copy a link to this glyph with current settings.">Copy Share Link</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer Section -->
+    <footer class="bg-slate-900 py-4 border-t border-slate-700 text-center text-slate-500 text-sm">
+        <div class="container">
+            LexiGlyph Weaver &copy; 2023. Built with deterministic design principles.
+        </div>
+    </footer>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- DOM Elements ---
+        const inputTextArea = document.getElementById('textInput');
+        const charCountSpan = document.getElementById('charCount');
+        const validationMessageSpan = document.getElementById('validationMessage');
+        const generateButton = document.getElementById('generateButton');
+        const randomGlyphButton = document.getElementById('randomGlyphButton');
+        const glyphDisplay = document.getElementById('glyphDisplay');
+        const glyphPlaceholder = document.getElementById('glyphPlaceholder'); // New
+        const downloadSvgButton = document.getElementById('downloadSvg');
+        const downloadPngButton = document.getElementById('downloadPng');
+        const copySvgButton = document.getElementById('copySvg');
+        const copyPngButton = document.getElementById('copyPng');
+        const copyShareLinkButton = document.getElementById('copyShareLink'); // New
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const toastContainer = document.getElementById('toast-container'); // New
+
+        // Settings Panel Elements
+        const settingsPanel = document.getElementById('settingsPanel');
+        const recursionDepthMultiplierInput = document.getElementById('recursionDepthMultiplier');
+        const recursionDepthValueSpan = document.getElementById('recursionDepthValue');
+        const strokeWidthMultiplierInput = document.getElementById('strokeWidthMultiplier');
+        const strokeWidthValueSpan = document.getElementById('strokeWidthValue');
+        const innerRotationOffsetMultiplierInput = document.getElementById('innerRotationOffsetMultiplier');
+        const innerRotationValueSpan = document.getElementById('innerRotationValue');
+        const saturationOffsetInput = document.getElementById('saturationOffset');
+        const saturationValueSpan = document.getElementById('saturationValue');
+        const lightnessOffsetInput = document.getElementById('lightnessOffset');
+        const lightnessValueSpan = document.getElementById('lightnessValue');
+        const resetSettingsButton = document.getElementById('resetSettingsButton');
+
+        // Glyph History Elements
+        const glyphHistoryList = document.getElementById('glyphHistoryList');
+        const noHistoryMessage = document.getElementById('noHistoryMessage');
+        const clearHistoryButton = document.getElementById('clearHistoryButton');
+
+        // --- State Variables ---
+        let currentInputText = '';
+        let currentHash = ''; // Stores the SHA-256 hash of the current normalized input
+        let currentSvgContent = ''; // Stores the generated SVG string
+        let isLoading = false; // Tracks if glyph generation is in progress
+        let debounceTimer; // Timer for debouncing input
+        let currentPngDataUrl = ''; // Stores generated PNG data URL for copy functionality
+
+        // --- Constants ---
+        const MIN_CHARS = 5; // Minimum character length for input
+        const MAX_CHARS = 256; // Maximum character length for input
+        const DEBOUNCE_DELAY = 500; // Milliseconds to wait after input stops before generating glyph
+        const GLYPH_HISTORY_MAX = 10; // Max number of glyphs to store in history
+        const SETTINGS_STORAGE_KEY = 'glyphSettings'; // Key for local storage of settings
+
+        // --- Utility Functions ---
+
+        /**
+         * Normalizes the input text for consistent hashing and characteristic extraction.
+         * This ensures that variations in whitespace or casing do not produce different glyphs.
+         * @param {string} text - The raw input text.
+         * @returns {string} The normalized text (trimmed and lowercased).
+         */
+        function normalizeText(text) {
+            return text.trim().toLowerCase();
+        }
+
+        /**
+         * Computes the SHA-256 hash of a given text string using the Web Cryptography API.
+         * This provides a robust, collision-resistant seed for deterministic generation.
+         * @param {string} text - The text to hash.
+         * @returns {Promise<string>} A promise that resolves to the hex-encoded SHA-256 hash.
+         */
+        async function sha256(text) {
+            const textEncoder = new TextEncoder();
+            const data = textEncoder.encode(text);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hexHash;
+        }
+
+        /**
+         * A deterministic pseudo-random number generator (PRNG) using the Mulberry32 algorithm.
+         * This function ensures that given the same seed, it will always produce the same sequence of "random" numbers,
+         * crucial for deterministic glyph generation.
+         * @param {number} seed - The initial seed for the PRNG.
+         * @returns {function(): number} A function that returns the next pseudo-random number between 0 (inclusive) and 1 (exclusive).
+         */
+        function seededPRNG(seed) {
+            // Convert seed to an unsigned 32-bit integer
+            let s = seed >>> 0;
+            return function() {
+                s |= 0; // Ensure it's treated as a 32-bit integer
+                s = s + 0x6D2B79F5 | 0; // Add a large prime and bitwise OR to ensure 32-bit int
+                let t = Math.imul(s ^ s >>> 15, 1 | s); // Perform integer multiplication
+                t = t + Math.imul(t ^ t >>> 13, 1 | t);
+                return ((t ^ t >>> 16) >>> 0) / 4294967296; // Convert to 0-1 range
+            };
+        }
+
+        /**
+         * Converts a hexadecimal string segment to a decimal number.
+         * @param {string} hex - The hexadecimal string (e.g., 'A1', 'FF').
+         * @returns {number} The decimal representation of the hex string.
+         */
+        function hexToDec(hex) {
+            return parseInt(hex, 16);
+        }
+
+        /**
+         * Extracts various numerical characteristics from the input text.
+         * These characteristics subtly influence the visual parameters of the glyph.
+         * @param {string} text - The input text.
+         * @returns {object} An object containing properties like length, ASCII sum, unique character count, and entropy.
+         */
+        function extractCharacteristics(text) {
+            const length = text.length;
+            let asciiSum = 0;
+            const charFrequencies = {};
+            const uniqueChars = new Set();
+
+            for (let i = 0; i < length; i++) {
+                const char = text[i];
+                const charCode = char.charCodeAt(0);
+                asciiSum += charCode;
+                charFrequencies[char] = (charFrequencies[char] || 0) + 1;
+                uniqueChars.add(char);
+            }
+
+            // Calculate Shannon Entropy: H = -sum(p_i * log2(p_i))
+            let entropy = 0;
+            for (const char in charFrequencies) {
+                const p = charFrequencies[char] / length;
+                if (p > 0) {
+                    entropy -= p * Math.log2(p);
+                }
+            }
+
+            // Word count is less critical for short strings but included for completeness
+            const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
+
+            return {
+                length,
+                asciiSum,
+                uniqueCharCount: uniqueChars.size,
+                charFrequencies,
+                entropy,
+                wordCount
+            };
+        }
+
+        /**
+         * Maps extracted text characteristics and hash values to specific visual parameters.
+         * This function embodies the "deterministic design" where input drives output.
+         * It uses hash bytes and text characteristics to derive properties like color, shape, and complexity.
+         * @param {string} hash - The SHA-256 hash of the normalized text.
+         * @param {object} characteristics - Characteristics extracted from the text.
+         * @param {object} userSettings - User-defined multipliers/offsets for parameters.
+         * @returns {object} An object containing all visual parameters needed for glyph generation.
+         */
+        function mapParameters(hash, characteristics, userSettings) {
+            // Convert hash to an array of decimal bytes for easier access and parameter derivation
+            const hashBytes = Array.from({ length: 32 }, (_, i) => hexToDec(hash.substring(i * 2, i * 2 + 2)));
+
+            // Use a segment of the hash as the primary seed for the PRNG
+            const prngSeed = hexToDec(hash.substring(0, 8)); // First 4 bytes (8 hex chars)
+            const prng = seededPRNG(prngSeed); // Create a seeded PRNG instance for consistent "randomness"
+
+            // --- Parameter Mapping Logic ---
+            // Each parameter is carefully derived to ensure subtle influence and distinct glyphs.
+
+            // Overall Complexity/Intricacy: Influenced by text length, entropy, and unique character count.
+            // Maps to a recursion depth (e.g., 3 to 7 levels of nesting).
+            const complexityBase = (characteristics.length / MAX_CHARS) * 0.4; // 0-0.4
+            const entropyInfluence = (characteristics.entropy / Math.log2(256)) * 0.6; // 0-0.6 (max entropy for 256 unique chars)
+            let recursionDepth = Math.max(3, Math.min(7, Math.floor((complexityBase + entropyInfluence) * 5) + 3));
+            // Apply user multiplier
+            recursionDepth = Math.round(recursionDepth * userSettings.recursionDepthMultiplier);
+            recursionDepth = Math.max(1, Math.min(10, recursionDepth)); // Clamp to reasonable range
+
+            // Primary Shape/Form: Influenced by ASCII sum and hash bytes.
+            // Determines the number of sides for the base polygon (e.g., 3 for triangle, 8 for octagon).
+            const sides = Math.max(3, Math.min(8, Math.floor(hashBytes[0] / 32) + 3)); // Map 0-255 to 3-8
+
+            // Color Palette: Derived from specific bytes of the SHA-256 hash for consistency.
+            // Uses HSL color model for easy manipulation of hue, saturation, and lightness.
+            const baseHue = Math.floor(hashBytes[1] / 255 * 360); // Main hue from hash byte
+            const accentHue1 = (baseHue + 120 + Math.floor(prng() * 30 - 15)) % 360; // Offset for accent 1
+            const accentHue2 = (baseHue + 240 + Math.floor(prng() * 30 - 15)) % 360; // Offset for accent 2
+
+            let saturation = Math.max(50, Math.min(90, Math.floor(hashBytes[2] / 255 * 40) + 50)); // 50-90%
+            let lightness = Math.max(30, Math.min(70, Math.floor(hashBytes[3] / 255 * 40) + 30)); // 30-70%
+            // Apply user offsets
+            saturation = Math.max(10, Math.min(100, saturation + userSettings.saturationOffset));
+            lightness = Math.max(10, Math.min(90, lightness + userSettings.lightnessOffset));
+
+            const colors = {
+                primary: `hsl(${baseHue}, ${saturation}%, ${lightness}%)`,
+                secondary: `hsl(${accentHue1}, ${saturation}%, ${lightness}%)`,
+                tertiary: `hsl(${accentHue2}, ${saturation}%, ${lightness}%)`,
+                // Background color derived from primary hue but darker/less saturated
+                background: `hsl(${baseHue}, ${Math.max(10, saturation - 40)}%, ${Math.max(10, lightness - 20)}%)`
+            };
+
+            // Symmetry/Asymmetry & Rotation: Influenced by hash bytes.
+            const rotationOffset = (hashBytes[4] / 255) * 360; // Base rotation for the entire glyph (0-360 deg)
+
+            // Line Weight/Thickness: Influenced by text length and hash.
+            let baseStrokeWidth = Math.max(0.5, Math.min(3, (characteristics.length / MAX_CHARS) * 2.5 + (hashBytes[5] / 255) * 0.5)); // 0.5-3.0
+            // Apply user multiplier
+            baseStrokeWidth = baseStrokeWidth * userSettings.strokeWidthMultiplier;
+            baseStrokeWidth = Math.max(0.1, Math.min(5, baseStrokeWidth)); // Clamp to reasonable range
+
+            // Pattern Repetition/Density: Influenced by hash values for scaling and inner rotation.
+            const scaleFactor = Math.max(0.6, Math.min(0.9, (hashBytes[6] / 255) * 0.3 + 0.6)); // How much smaller each nested element is (0.6-0.9)
+            let innerRotationOffset = (hashBytes[7] / 255) * 90 - 45; // Relative rotation for nested elements (-45 to 45 deg)
+            // Apply user multiplier
+            innerRotationOffset = innerRotationOffset * userSettings.innerRotationOffsetMultiplier;
+            innerRotationOffset = Math.max(-180, Math.min(180, innerRotationOffset)); // Clamp to reasonable range
+
+            return {
+                recursionDepth,
+                sides,
+                colors,
+                rotationOffset,
+                baseStrokeWidth,
+                scaleFactor,
+                innerRotationOffset,
+                prng // Pass the seeded PRNG instance for use in glyph generation if needed
+            };
+        }
+
+        /**
+         * Generates the SVG string for the glyph based on the calculated parameters.
+         * This function uses a recursive geometric pattern to create intricate visuals.
+         * @param {object} params - The visual parameters derived from text characteristics and hash.
+         * @returns {string} The complete SVG string representing the glyph.
+         */
+        function generateGlyphSVG(params) {
+            const size = 500; // Define a consistent SVG viewBox size (e.g., 500x500 pixels)
+            const centerX = size / 2;
+            const centerY = size / 2;
+
+            let svgElements = []; // Array to collect SVG path strings
+
+            /**
+             * Generates SVG path data for a regular polygon centered at (cx, cy).
+             * @param {number} sides - Number of sides for the polygon.
+             * @param {number} radius - Radius of the circumcircle of the polygon.
+             * @param {number} rotation - Initial rotation of the polygon in degrees.
+             * @param {number} cx - Center X coordinate.
+             * @param {number} cy - Center Y coordinate.
+             * @returns {string} SVG path 'd' attribute value.
+             */
+            function createPolygonPath(sides, radius, rotation, cx, cy) {
+                let path = '';
+                for (let i = 0; i < sides; i++) {
+                    // Calculate angle for each vertex, adjusting for rotation
+                    const angle = (Math.PI / 180) * (rotation + (360 / sides) * i);
+                    const x = cx + radius * Math.cos(angle);
+                    const y = cy + radius * Math.sin(angle);
+                    path += (i === 0 ? 'M' : 'L') + `${x},${y}`; // Move to first point, then draw lines
+                }
+                path += 'Z'; // Close the path
+                return path;
+            }
+
+            /**
+             * Recursively draws nested polygons, creating the intricate glyph structure.
+             * Parameters for each level are derived from the overall glyph parameters.
+             * @param {number} depth - Current recursion depth (starts at 1).
+             * @param {number} currentSides - Number of sides for polygons at this depth.
+             * @param {number} currentRadius - Radius for polygons at this depth.
+             * @param {number} currentRotation - Rotation for polygons at this depth.
+             * @param {number} currentStrokeWidth - Stroke width for polygons at this depth.
+             * @param {string} currentColor - Stroke color for polygons at this depth.
+             * @param {number} currentOpacity - Opacity for polygons at this depth.
+             */
+            function drawRecursivePolygon(depth, currentSides, currentRadius, currentRotation, currentStrokeWidth, currentColor, currentOpacity) {
+                // Base case: stop recursion if depth exceeds the maximum or radius becomes too small
+                if (depth > params.recursionDepth || currentRadius < 0.5) {
+                    return;
+                }
+
+                // Add the current polygon to the SVG elements list
+                const pathData = createPolygonPath(currentSides, currentRadius, currentRotation, centerX, centerY);
+                svgElements.push(`<path d="${pathData}" fill="none" stroke="${currentColor}" stroke-width="${currentStrokeWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${currentOpacity}"/>`);
+
+                // Add small circles/dots at vertices for extra detail, only for the initial layers
+                if (depth <= 2) { // Apply dots for the first couple of layers
+                    for (let i = 0; i < currentSides; i++) {
+                        const angle = (Math.PI / 180) * (currentRotation + (360 / currentSides) * i);
+                        const vertexX = centerX + currentRadius * Math.cos(angle);
+                        const vertexY = centerY + currentRadius * Math.sin(angle);
+                        svgElements.push(`<circle cx="${vertexX}" cy="${vertexY}" r="${currentStrokeWidth * 1.5}" fill="${currentColor}" opacity="${currentOpacity * 0.8}"/>`);
+                    }
+                }
+
+                // Calculate parameters for the next recursive level
+                const nextRadius = currentRadius * params.scaleFactor; // Scale down the radius
+                const nextStrokeWidth = currentStrokeWidth * 0.8; // Make lines thinner for nested shapes
+                const nextRotation = currentRotation + params.innerRotationOffset; // Apply inner rotation offset
+                const nextOpacity = currentOpacity * 0.9; // Reduce opacity for nested shapes
+
+                // Determine color for the next level, alternating between secondary and tertiary
+                const nextColor = depth % 2 === 0 ? params.colors.secondary : params.colors.tertiary;
+
+                // Recursive call for the next level
+                drawRecursivePolygon(
+                    depth + 1,
+                    currentSides, // Keep the same number of sides for consistent shape
+                    nextRadius,
+                    nextRotation,
+                    nextStrokeWidth,
+                    nextColor,
+                    nextOpacity
+                );
+            }
+
+            // Initial call to start the recursive drawing process
+            // The base polygon starts with a radius proportional to the SVG size
+            drawRecursivePolygon(
+                1, // Start at depth 1
+                params.sides,
+                (size / 2) * 0.8, // Initial radius (80% of half the SVG size)
+                params.rotationOffset,
+                params.baseStrokeWidth,
+                params.colors.primary,
+                1.0 // Full opacity for the outermost layer
+            );
+
+            // Construct the final SVG string, including the background color
+            return `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" style="background-color: ${params.colors.background};">
+                ${svgElements.join('\n')}
+            </svg>`;
+        }
+
+        // --- Core Logic Functions ---
+
+        /** Retrieves current user settings from the sliders. */
+        function getUserSettings() {
+            return {
+                recursionDepthMultiplier: parseFloat(recursionDepthMultiplierInput.value),
+                strokeWidthMultiplier: parseFloat(strokeWidthMultiplierInput.value),
+                innerRotationOffsetMultiplier: parseFloat(innerRotationOffsetMultiplierInput.value),
+                saturationOffset: parseInt(saturationOffsetInput.value),
+                lightnessOffset: parseInt(lightnessOffsetInput.value)
+            };
+        }
+
+        /** Saves current user settings to local storage. */
+        function saveSettings() {
+            try {
+                localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(getUserSettings()));
+            } catch (e) {
+                console.error("Failed to save settings to local storage:", e);
+            }
+        }
+
+        /** Loads user settings from local storage and applies them to sliders. */
+        function loadSettings() {
+            try {
+                const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY));
+                if (savedSettings) {
+                    recursionDepthMultiplierInput.value = savedSettings.recursionDepthMultiplier || recursionDepthMultiplierInput.defaultValue;
+                    strokeWidthMultiplierInput.value = savedSettings.strokeWidthMultiplier || strokeWidthMultiplierInput.defaultValue;
+                    innerRotationOffsetMultiplierInput.value = savedSettings.innerRotationOffsetMultiplier || innerRotationOffsetMultiplierInput.defaultValue;
+                    saturationOffsetInput.value = savedSettings.saturationOffset || saturationOffsetInput.defaultValue;
+                    lightnessOffsetInput.value = savedSettings.lightnessOffset || lightnessOffsetInput.defaultValue;
+                }
+            } catch (e) {
+                console.error("Failed to load settings from local storage:", e);
+            }
+            updateRangeValueDisplays();
+        }
+
+        /** Updates the UI state based on loading status and input validity. */
+        function updateUIState() {
+            const isValidInput = currentInputText.length >= MIN_CHARS && currentInputText.length <= MAX_CHARS;
+            
+            generateButton.disabled = isLoading || !isValidInput;
+            randomGlyphButton.disabled = isLoading;
+            downloadSvgButton.disabled = isLoading || !currentSvgContent;
+            downloadPngButton.disabled = isLoading || !currentSvgContent;
+            copySvgButton.disabled = isLoading || !currentSvgContent;
+            copyPngButton.disabled = isLoading || !currentSvgContent;
+            copyShareLinkButton.disabled = isLoading || !currentSvgContent; // New button
+
+            loadingIndicator.classList.toggle('hidden', !isLoading);
+            glyphDisplay.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+
+            // Show/hide placeholder
+            glyphPlaceholder.classList.toggle('hidden', currentSvgContent !== '' || isLoading);
+        }
+
+        /**
+         * Handles text input changes: validates length, updates character count, and debounces glyph generation.
+         */
+        function handleInputChange() {
+            currentInputText = inputTextArea.value;
+            const charCount = currentInputText.length;
+            charCountSpan.textContent = `${charCount} / ${MAX_CHARS} characters`;
+
+            let isValid = true;
+            if (charCount < MIN_CHARS) {
+                validationMessageSpan.textContent = `Too short (min ${MIN_CHARS} chars)`;
+                isValid = false;
+            } else if (charCount > MAX_CHARS) {
+                validationMessageSpan.textContent = `Too long (max ${MAX_CHARS} chars)`;
+                isValid = false;
+            } else {
+                validationMessageSpan.textContent = ''; // Clear validation message
+            }
+
+            clearTimeout(debounceTimer);
+            if (isValid) {
+                debounceTimer = setTimeout(() => {
+                    generateGlyph(currentInputText);
+                }, DEBOUNCE_DELAY);
+            } else {
+                // If input is invalid, clear the displayed glyph and its content
+                glyphDisplay.innerHTML = '';
+                glyphDisplay.appendChild(loadingIndicator); // Ensure loading indicator is re-parented
+                glyphDisplay.appendChild(glyphPlaceholder); // Ensure placeholder is re-parented
+                glyphDisplay.classList.remove('is-loaded'); // Remove animation class
+                currentSvgContent = '';
+                currentPngDataUrl = ''; // Clear PNG data URL
+            }
+            updateUIState();
+        }
+
+        /** Updates the display values for range inputs and saves settings. */
+        function updateRangeValueDisplays() {
+            recursionDepthValueSpan.textContent = `${recursionDepthMultiplierInput.value}x`;
+            strokeWidthValueSpan.textContent = `${strokeWidthMultiplierInput.value}x`;
+            innerRotationValueSpan.textContent = `${innerRotationOffsetMultiplierInput.value}x`;
+            saturationValueSpan.textContent = `${saturationOffsetInput.value}`;
+            lightnessValueSpan.textContent = `${lightnessOffsetInput.value}`;
+            saveSettings(); // Save settings immediately on change
+        }
+
+        /**
+         * Resets all advanced settings sliders to their default values.
+         */
+        function resetSettings() {
+            recursionDepthMultiplierInput.value = recursionDepthMultiplierInput.defaultValue;
+            strokeWidthMultiplierInput.value = strokeWidthMultiplierInput.defaultValue;
+            innerRotationOffsetMultiplierInput.value = innerRotationOffsetMultiplierInput.defaultValue;
+            saturationOffsetInput.value = saturationOffsetInput.defaultValue;
+            lightnessOffsetInput.value = lightnessOffsetInput.defaultValue;
+            updateRangeValueDisplays(); // This will also save default settings
+            handleInputChange(); // Re-generate glyph with default settings
+            showToast('Settings reset to default!', 'success');
+        }
+
+        /**
+         * Generates a random text string for the random glyph feature.
+         * For simplicity, using a UUID. Could be expanded to random words.
+         * @returns {string} A randomly generated string.
+         */
+        function generateRandomText() {
+            // Generate a UUID (version 4)
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        /**
+         * Main function to orchestrate the generation and display of the glyph.
+         * It performs hashing, characteristic extraction, parameter mapping, and SVG rendering.
+         * @param {string} text - The input text string to generate a glyph from.
+         */
+        async function generateGlyph(text) {
+            if (isLoading || text.length < MIN_CHARS || text.length > MAX_CHARS) {
+                return;
+            }
+
+            setIsLoading(true);
+            glyphDisplay.classList.remove('is-loaded');
+            currentPngDataUrl = '';
+
+            try {
+                const normalizedText = normalizeText(text);
+                const hash = await sha256(normalizedText);
+                currentHash = hash;
+
+                const characteristics = extractCharacteristics(normalizedText);
+                const userSettings = getUserSettings();
+                const parameters = mapParameters(hash, characteristics, userSettings);
+                const svg = generateGlyphSVG(parameters);
+
+                currentSvgContent = svg;
+                glyphDisplay.innerHTML = svg; // Clear previous content and inject new SVG
+                glyphDisplay.appendChild(loadingIndicator); // Re-append loading indicator
+                glyphDisplay.appendChild(glyphPlaceholder); // Re-append placeholder
+
+                // Use requestAnimationFrame to ensure reflow before applying 'is-loaded' class
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        const svgElement = glyphDisplay.querySelector('svg');
+                        if (svgElement) {
+                            svgElement.classList.add('is-loaded');
+                        }
+                    });
+                });
+                
+                saveGlyphToHistory(text, hash);
+
+            } catch (error) {
+                console.error("Error generating glyph:", error);
+                validationMessageSpan.textContent = "Error generating glyph. Please try again.";
+                glyphDisplay.innerHTML = `<p class="text-red-400 text-center p-4">Failed to generate glyph. Check console for details.</p>`;
+                glyphDisplay.appendChild(loadingIndicator); // Re-append loading indicator
+                glyphDisplay.appendChild(glyphPlaceholder); // Re-append placeholder
+                currentSvgContent = '';
+                currentPngDataUrl = '';
+                showToast('Failed to generate glyph!', 'error');
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        /**
+         * Sets the loading state and triggers a UI update.
+         * @param {boolean} state - `true` to indicate loading, `false` otherwise.
+         */
+        function setIsLoading(state) {
+            isLoading = state;
+            updateUIState();
+        }
+
+        // --- Toast Notification System (New) ---
+        function showToast(message, type = 'info', duration = 3000) {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`; // Add type for potential styling
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+
+            // Force reflow to ensure transition starts from initial state
+            void toast.offsetWidth; 
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.classList.add('hide');
+                toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+            }, duration);
+        }
+
+        // --- Export & Copy Functions ---
+
+        /**
+         * Generic function to copy text to clipboard with user feedback.
+         * @param {string} text - The text to copy.
+         * @param {string} successMessage - Message for successful copy.
+         * @param {string} errorMessage - Message for failed copy.
+         */
+        async function copyToClipboard(text, successMessage, errorMessage) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast(successMessage, 'success');
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                showToast(errorMessage, 'error');
+            }
+        }
+
+        /**
+         * Allows users to download the generated glyph as an SVG file.
+         * The SVG is directly created from the `currentSvgContent`.
+         */
+        function downloadSVG() {
+            if (!currentSvgContent) return;
+
+            showToast('Downloading SVG...', 'info', 1000);
+
+            const blob = new Blob([currentSvgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `lexiglyph-${currentHash.substring(0, 8)}.svg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        /**
+         * Generates and stores the PNG data URL from the current SVG content.
+         * This function is now called on demand, not during initial glyph generation.
+         */
+        async function generatePngDataUrl() {
+            if (!currentSvgContent) {
+                currentPngDataUrl = '';
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const outputPxSize = 2000; // Desired output PNG width/height in pixels
+
+            canvas.width = outputPxSize;
+            canvas.height = outputPxSize;
+
+            const img = new Image();
+            const svgUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(currentSvgContent)));
+            img.src = svgUrl;
+
+            try {
+                await new Promise((resolve, reject) => {
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, outputPxSize, outputPxSize);
+                        resolve();
+                    };
+                    img.onerror = (err) => {
+                        console.error("Error drawing SVG to canvas:", err);
+                        reject(new Error("Failed to render SVG to canvas."));
+                    };
+                });
+                currentPngDataUrl = canvas.toDataURL('image/png');
+            } catch (error) {
+                console.error("Error generating PNG data URL:", error);
+                currentPngDataUrl = '';
+                throw error; // Re-throw to be caught by the caller
+            } finally {
+                canvas.remove();
+            }
+        }
+
+        /**
+         * Allows users to download the generated glyph as a high-resolution PNG image.
+         */
+        async function downloadPNG() {
+            if (!currentSvgContent) return;
+
+            showToast('Generating PNG...', 'info', 2000);
+
+            try {
+                await generatePngDataUrl();
+                if (!currentPngDataUrl) {
+                    throw new Error("PNG data not generated.");
+                }
+
+                const a = document.createElement('a');
+                a.href = currentPngDataUrl;
+                a.download = `lexiglyph-${currentHash.substring(0, 8)}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showToast('PNG Downloaded!', 'success');
+            } catch (error) {
+                console.error("Error downloading PNG:", error);
+                showToast('Failed to download PNG!', 'error');
+            }
+        }
+
+        /** Copies the current SVG content to the clipboard. */
+        function copySvgContent() {
+            if (!currentSvgContent) return;
+            copyToClipboard(currentSvgContent, 'SVG copied to clipboard!', 'Failed to copy SVG!');
+        }
+
+        /** Copies the current PNG data URL to the clipboard. */
+        async function copyPngBase64() {
+            if (!currentSvgContent) return;
+
+            showToast('Generating PNG data...', 'info', 2000);
+
+            try {
+                await generatePngDataUrl();
+                if (!currentPngDataUrl) {
+                    throw new Error("PNG data not generated.");
+                }
+                await navigator.clipboard.writeText(currentPngDataUrl);
+                showToast('PNG (Base64) copied to clipboard!', 'success');
+            } catch (err) {
+                console.error('Failed to copy PNG data: ', err);
+                showToast('Failed to copy PNG data!', 'error');
+            }
+        }
+
+        /**
+         * Generates a shareable URL encoding the current text and settings.
+         * @returns {string} The shareable URL.
+         */
+        function generateShareableUrl() {
+            const settings = getUserSettings();
+            const params = new URLSearchParams();
+            params.set('text', currentInputText);
+            params.set('rdm', settings.recursionDepthMultiplier);
+            params.set('swm', settings.strokeWidthMultiplier);
+            params.set('irom', settings.innerRotationOffsetMultiplier);
+            params.set('so', settings.saturationOffset);
+            params.set('lo', settings.lightnessOffset);
+            return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+        }
+
+        /** Copies the shareable URL to the clipboard. */
+        function copyShareableLink() {
+            if (!currentSvgContent) return; // Only allow sharing if a glyph is generated
+            const url = generateShareableUrl();
+            copyToClipboard(url, 'Shareable link copied!', 'Failed to copy shareable link!');
+        }
+
+        // --- Glyph History Functions ---
+        
+        /**
+         * Saves a glyph's input text and hash to local storage history.
+         * @param {string} text - The input text for the glyph.
+         * @param {string} hash - The hash of the glyph.
+         */
+        function saveGlyphToHistory(text, hash) {
+            try {
+                let history = JSON.parse(localStorage.getItem('glyphHistory') || '[]');
+                
+                // Remove existing entry if text is already in history to move it to top
+                history = history.filter(item => item.text !== text);
+
+                history.unshift({ text, hash, timestamp: Date.now() }); // Add new item to the beginning
+
+                // Trim history to max size
+                if (history.length > GLYPH_HISTORY_MAX) {
+                    history = history.slice(0, GLYPH_HISTORY_MAX);
+                }
+
+                localStorage.setItem('glyphHistory', JSON.stringify(history));
+                renderGlyphHistory(); // Re-render the history list
+            } catch (e) {
+                console.error("Failed to save glyph to history:", e);
+                showToast('Failed to save glyph to history.', 'error');
+            }
+        }
+
+        /**
+         * Renders the glyph history list from local storage.
+         */
+        function renderGlyphHistory() {
+            glyphHistoryList.innerHTML = ''; // Clear current list
+            try {
+                const history = JSON.parse(localStorage.getItem('glyphHistory') || '[]');
+
+                if (history.length === 0) {
+                    noHistoryMessage.classList.remove('hidden');
+                    clearHistoryButton.classList.add('hidden');
+                } else {
+                    noHistoryMessage.classList.add('hidden');
+                    clearHistoryButton.classList.remove('hidden');
+                    history.forEach((item, index) => {
+                        const historyItemDiv = document.createElement('div');
+                        historyItemDiv.className = 'history-item';
+                        historyItemDiv.setAttribute('role', 'button');
+                        historyItemDiv.setAttribute('tabindex', '0');
+                        historyItemDiv.setAttribute('aria-label', `Load glyph for "${item.text}"`);
+                        historyItemDiv.title = `Load glyph for "${item.text}"`;
+
+                        const textSpan = document.createElement('span');
+                        textSpan.textContent = item.text;
+                        historyItemDiv.appendChild(textSpan);
+
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = 'Remove';
+                        deleteButton.setAttribute('aria-label', `Remove "${item.text}" from history`);
+                        deleteButton.title = `Remove "${item.text}" from history`;
+                        deleteButton.className = 'bg-red-600 hover:bg-red-700 text-white px-3 py-1 text-sm rounded-md ml-4 flex-shrink-0'; // Apply Tailwind classes directly
+                        deleteButton.onclick = (e) => {
+                            e.stopPropagation(); // Prevent loading glyph when deleting
+                            removeGlyphFromHistory(index);
+                        };
+                        historyItemDiv.appendChild(deleteButton);
+
+                        historyItemDiv.onclick = () => {
+                            inputTextArea.value = item.text;
+                            handleInputChange(); // This will trigger glyph generation
+                            showToast(`Loaded "${item.text}" from history.`, 'info');
+                        };
+                        // Add keyboard navigation for history items
+                        historyItemDiv.addEventListener('keydown', (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault(); // Prevent default scroll behavior for spacebar
+                                historyItemDiv.click();
+                            }
+                        });
+                        glyphHistoryList.appendChild(historyItemDiv);
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to render glyph history:", e);
+                noHistoryMessage.classList.remove('hidden'); // Show message on error
+                noHistoryMessage.textContent = "Error loading history.";
+                clearHistoryButton.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Removes a glyph from history by its index.
+         * @param {number} index - The index of the item to remove.
+         */
+        function removeGlyphFromHistory(index) {
+            try {
+                let history = JSON.parse(localStorage.getItem('glyphHistory') || '[]');
+                if (index > -1 && index < history.length) {
+                    const removedItem = history.splice(index, 1);
+                    localStorage.setItem('glyphHistory', JSON.stringify(history));
+                    renderGlyphHistory();
+                    showToast(`Removed "${removedItem[0].text}" from history.`, 'success');
+                }
+            } catch (e) {
+                console.error("Failed to remove glyph from history:", e);
+                showToast('Failed to remove glyph from history.', 'error');
+            }
+        }
+
+        /**
+         * Clears all glyph history from local storage.
+         */
+        function clearAllHistory() {
+            if (confirm("Are you sure you want to clear all glyph history?")) {
+                try {
+                    localStorage.removeItem('glyphHistory');
+                    renderGlyphHistory();
+                    showToast('Glyph history cleared!', 'success');
+                } catch (e) {
+                    console.error("Failed to clear history:", e);
+                    showToast('Failed to clear history.', 'error');
+                }
+            }
+        }
+
+        // --- Event Listeners ---
+        inputTextArea.addEventListener('input', handleInputChange);
+        generateButton.addEventListener('click', () => generateGlyph(currentInputText));
+        randomGlyphButton.addEventListener('click', () => {
+            inputTextArea.value = generateRandomText();
+            handleInputChange();
+        });
+        downloadSvgButton.addEventListener('click', downloadSVG);
+        downloadPngButton.addEventListener('click', downloadPNG);
+        copySvgButton.addEventListener('click', copySvgContent);
+        copyPngButton.addEventListener('click', copyPngBase64);
+        copyShareLinkButton.addEventListener('click', copyShareableLink); // New
+
+        // Event listeners for settings panel inputs
+        recursionDepthMultiplierInput.addEventListener('input', updateRangeValueDisplays);
+        strokeWidthMultiplierInput.addEventListener('input', updateRangeValueDisplays);
+        innerRotationOffsetMultiplierInput.addEventListener('input', updateRangeValueDisplays);
+        saturationOffsetInput.addEventListener('input', updateRangeValueDisplays);
+        lightnessOffsetInput.addEventListener('input', updateRangeValueDisplays);
+        
+        // Re-generate glyph when settings change (after debounce)
+        const settingInputs = [
+            recursionDepthMultiplierInput,
+            strokeWidthMultiplierInput,
+            innerRotationOffsetMultiplierInput,
+            saturationOffsetInput,
+            lightnessOffsetInput
+        ];
+        settingInputs.forEach(input => {
+            input.addEventListener('change', handleInputChange); // Use 'change' to trigger after user releases slider
+        });
+
+
+        resetSettingsButton.addEventListener('click', resetSettings);
+        clearHistoryButton.addEventListener('click', clearAllHistory);
+
+        // New: Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) { // Ctrl for Windows/Linux, Cmd for Mac
+                if (e.key === 'Enter') {
+                    if (!generateButton.disabled) {
+                        e.preventDefault(); // Prevent new line in textarea
+                        generateButton.click();
+                    }
+                } else if (e.key === 'r' || e.key === 'R') {
+                    if (!randomGlyphButton.disabled) {
+                        e.preventDefault(); // Prevent browser default (e.g., refresh)
+                        randomGlyphButton.click();
+                    }
+                }
+            }
+        });
+
+        // --- Initial Render ---
+        // Generate a glyph for a default string or from URL parameters when the page loads.
+        window.addEventListener('load', () => {
+            loadSettings(); // Load saved settings first
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlText = urlParams.get('text');
+            
+            if (urlText) {
+                inputTextArea.value = urlText;
+                // Apply settings from URL if present
+                recursionDepthMultiplierInput.value = urlParams.get('rdm') || recursionDepthMultiplierInput.value;
+                strokeWidthMultiplierInput.value = urlParams.get('swm') || strokeWidthMultiplierInput.value;
+                innerRotationOffsetMultiplierInput.value = urlParams.get('irom') || innerRotationOffsetMultiplierInput.value;
+                saturationOffsetInput.value = urlParams.get('so') || saturationOffsetInput.value;
+                lightnessOffsetInput.value = urlParams.get('lo') || lightnessOffsetInput.value;
+                updateRangeValueDisplays(); // Update displays and save settings
+                handleInputChange(); // This will trigger glyph generation via debounce
+                // Clear URL parameters after loading to prevent re-loading on refresh
+                history.replaceState({}, document.title, window.location.pathname);
+            } else {
+                const defaultText = "LexiGlyph Weaver";
+                inputTextArea.value = defaultText;
+                handleInputChange(); // This will trigger the initial glyph generation via debounce
+            }
+            renderGlyphHistory();
+        });
+    </script>
+
+    <div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.7);color:white;padding:5px 10px;border-radius:5px;font-family:sans-serif;font-size:12px">
+        Created by Dakota Rain Lock, powered by Holy Grail. A Dakota Rain Lock Invention.
+    </div>
+    
+
+    <div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.7);color:white;padding:5px 10px;border-radius:5px;font-family:sans-serif;font-size:12px">
+        Created by Dakota Rain Lock, powered by Holy Grail. A Dakota Rain Lock Invention.
+    </div>
+    
+</body>
+</html>
